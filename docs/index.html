@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+	<title>Increase and Decrease of Retailers in Seoul from 2006 to 2014</title>
+	
+	
+    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=false"></script>
+    <script type="text/javascript" src="d3.v4.min.js"></script>
+    <script type="text/javascript" src="valueDifference_matrix.js"></script>
+    <script type="text/javascript" src="dataTxt.js"></script>
+    <script type="text/javascript">
+        
+        
+        var sites = readTotalSites();
+        var values = readValueDifference();
+        
+        var transparent = false;
+        var recs = new Array(); 
+
+        var toggle = 1; 
+        var toggleText = ["선택된 업종의 합집합", "증감을 한번에", "선택된 업종의 교집합"];
+        var year = 0;
+        var beginYear = 2006;
+        var endYear = 2016;
+       /*
+        var dataTxt = ["한식", "중식", "기타 외국식", "서양식", "카페", "호프 및 간이주점", "치킨", "패스트푸드", "분식", //9
+            "일식", "제과점", "문구점", "서점", "편의점", "식료품점", "휴대폰점", "의류", "화장품방향제",                 //9
+            "철물점", "주유소", "꽃집", "슈퍼마켓", "인테리어", "목욕탕", "교습학원", "어학원", "예체능학원",             //9
+            "부동산중개업", "이발소", "미용실", "세탁소", "PC방", "노래방", "호텔", "여관모텔여인숙", "펜션"];            //9
+       */
+        function Data(lat, lng) {
+            this.lat = lat;
+            this.lng = lng;
+        }
+
+        function Rec(coordi, value) {
+            this.coordi = coordi;
+            this.value = value; 
+            this.on = false;
+            this.polygon;
+            this.temp;
+            this.tempValue;
+        }
+        
+        PutData(); 
+
+        var groupSelect = new Array();
+        for (var i = 0 ; i < dataTxt.length ; i++) groupSelect[i] = 0;
+
+        function onSelect(group) {
+            
+            var groupJudge, plusMinus;
+
+           
+            if (group < dataTxt.length) {
+                groupJudge = 0;
+                plusMinus = 1;
+            } else { 
+                groupJudge = -dataTxt.length;
+                plusMinus = -1;
+            }
+
+            
+            if (groupSelect[group+groupJudge] == 0) { 
+                document.getElementsByClassName("group" + group)[0].id = "selected";
+                groupSelect[group + groupJudge] = plusMinus;
+            } else if (groupSelect[group + groupJudge] == (plusMinus * -1)) { 
+                document.getElementsByClassName("group" + (group + (dataTxt.length*plusMinus)))[0].id = "unselected";
+                document.getElementsByClassName("group" + group)[0].id = "selected";
+                groupSelect[group + groupJudge] = plusMinus;
+            } else {  
+                document.getElementsByClassName("group" + group)[0].id = "unselected";
+                groupSelect[group + groupJudge] = 0;
+            }
+
+
+            reInit();
+        }
+
+        function reInit() {
+
+            var selectColor;
+
+            if (toggle == 1) {  
+
+                for (var i = 0 ; i < recs.length ; i++) recs[i].tempValue = 99999; 
+
+                for (var i = 0 ; i < recs.length ; i++) {  
+
+                    for (var j = 0; j < groupSelect.length ; j++) {
+
+                        if (groupSelect[j] != 0) {
+
+                            if (recs[i].tempValue != -99999) {
+                                if (recs[i].value[j] * groupSelect[j] > 0) { 
+
+                                    if (recs[i].value[j] * groupSelect[j] < recs[i].tempValue) {
+                                        recs[i].tempValue = recs[i].value[j] * groupSelect[j]; 
+                                    }
+                                } else {
+                                    recs[i].tempValue = -99999; 
+                                }
+                            }
+                        }
+                    }
+
+                    if (recs[i].tempValue == 99999) recs[i].tempValue = -99999; 
+                }
+
+                selectColor = selectColorForMulti();
+                
+            } else if (toggle == -1) {  
+
+                for (var i = 0 ; i < recs.length ; i++) recs[i].tempValue = 0 
+
+                for (var i = 0 ; i < recs.length ; i++) {  
+
+                    for (var j = 0; j < groupSelect.length ; j++) {
+
+                        if (groupSelect[j] != 0) { 
+                            if (recs[i].value[j] * groupSelect[j] > 0) {
+                                recs[i].tempValue += recs[i].value[j] * groupSelect[j];
+                            }
+                        }
+                    }
+
+                    if (recs[i].tempValue == 0) recs[i].tempValue = -99999; 
+                }
+
+                selectColor = selectColorForMulti();
+
+            } else { 
+
+                for (var i = 0 ; i < recs.length ; i++) recs[i].tempValue = -99999; 
+
+                for (var j = 0; j < groupSelect.length ; j++) {
+
+                    if (groupSelect[j] != 0) { 
+
+                        document.getElementById("toggle").innerText = dataTxt[j] +" 증감을 한번에";
+                        for (var i = 0 ; i < recs.length ; i++) {
+                            recs[i].tempValue = recs[i].value[j];
+                        }
+                        break;
+                    }
+                }
+                selectColor = selectColorForOne();
+            }
+
+
+            
+
+
+            for (var i = 0 ; i < recs.length ; i++) {
+
+                var flColor = (recs[i].tempValue == -99999||isNaN(recs[i].tempValue)) ? "white" : selectColor(recs[i].tempValue);
+                var fillOpa = (recs[i].tempValue == -99999 || isNaN(recs[i].tempValue)) ? 0 : 1;
+
+                recs[i].polygon.setOptions({
+                    fillColor: flColor,
+                    fillOpacity: fillOpa
+                });
+
+            };
+           
+        }
+
+        function selectColorForMulti() {
+
+           
+            var valueArray = putValueToArray();
+            valueArray[2].sort(function (a, b) { 
+                return a - b;
+            });
+            var maxAbs = Math.abs(d3.max(valueArray[2]));
+            var biggerQuantile = Math.abs(d3.quantile(valueArray[2], 0.98));
+
+            
+            var colorCode;
+            var count = 0, sum = 0;
+            for (var j = 0; j < groupSelect.length ; j++) {
+                sum += groupSelect[j];
+                if (groupSelect[j] != 0) count++;
+            }
+            if (sum == count) {  
+                colorCode = ["white", "#d80074", "#5c0031"];
+            } else if (sum == (-1) * count) { 
+                colorCode = ["white", "#0086cf", "#00334f"];
+            } else { 
+                colorCode = ["white", "#8a35a7", "#3f0c51"];
+            }
+
+            var selectColor = d3.scaleLinear()
+                               .domain([0, biggerQuantile, maxAbs])
+                               .range(colorCode);
+
+            return selectColor;
+
+        }
+
+        function selectColorForOne() {
+
+
+            var valueArray = putValueToArray();
+            valueArray[0].sort(function (a, b) {
+                return a - b;
+            });
+            valueArray[2].sort(function (a, b) {
+                return a - b;
+            });
+
+            var maxAbs;
+            var biggerQuantile;
+
+            if (Math.abs(d3.min(valueArray[0])) > Math.abs(d3.max(valueArray[2]))) {
+                maxAbs = Math.abs(d3.min(valueArray[0]));
+                biggerQuantile = Math.abs(d3.quantile(valueArray[0], 0.02));
+            } else {
+                maxAbs = Math.abs(d3.max(valueArray[2]));
+                biggerQuantile = Math.abs(d3.quantile(valueArray[2], 0.98));
+            }
+
+            
+            var selectColor = d3.scaleLinear()
+                                .domain([(maxAbs * -1), (biggerQuantile * -1), 0, biggerQuantile, maxAbs])
+                                .range(["#00334f", "#0086cf", "white", "#d80074", "#5c0031"]);
+           
+            return selectColor;
+
+
+        }
+
+
+        function putValueToArray() {
+
+            var tempArray = new Array();
+
+            tempArray[0] = new Array();
+            tempArray[1] = new Array();
+            tempArray[2] = new Array();
+
+            for (var i = 0 ; i < recs.length ; i++) {
+                if (recs[i].tempValue < 0) {
+                    tempArray[0].push(recs[i].tempValue);
+                } else if (recs[i].tempValue == 0) {
+                    tempArray[1].push(recs[i].tempValue);
+                } else if (recs[i].tempValue > 0) {
+                    tempArray[2].push(recs[i].tempValue);
+                } 
+            }
+            console.log(tempArray[0].length, tempArray[1].length, tempArray[2].length);
+            return tempArray;
+        }
+
+
+        function initialize() {
+
+            var styles = [
+                {
+                    featureType: 'all',
+                    stylers: [
+                        { saturation: -100 }
+                    ]
+                }
+            ];
+
+            var styledMap = new google.maps.StyledMapType(styles, { name: "Styled Map" });
+            // Google Map 
+            var mapOptions = {
+                center: new google.maps.LatLng(34.807095, 126.414442),
+                zoom: 11,
+                mapTypeControlOptions: {
+                    mapTypeIds: [google.maps.MapTypeId.ROADMAP, 'map_style']  //ROADMAP ,SATELLITE ,HYBRID ,TERRAIN
+                }
+            };
+
+            map = new google.maps.Map(document.getElementById("map_canvas"), mapOptions);
+            map.mapTypes.set('map_style', styledMap);
+            map.setMapTypeId('map_style');
+
+            var panelMinus = document.getElementById("minusGroup");
+            for (var i=0; i<dataTxt.length ; i++) {
+                //var liTag = panelMinus.createElement("LI");
+                panelMinus.innerHTML += "<li class='group"+(dataTxt.length+i)+"' id='unselected' onclick='onSelect("
+                                    +(dataTxt.length+i)+")'>"+dataTxt[i]+"-</li>";
+            }
+
+            var panelPlus = document.getElementById("plusGroup");
+            for (var i=0; i<dataTxt.length ; i++) {
+                //var liTag_ = panelPlus.createElement("LI");
+                panelPlus.innerHTML += "<li class='group"+(+i)+"' id='unselected' onclick='onSelect("
+                                    +(i)+")'>"+dataTxt[i]+"+</li>";
+            }
+
+            DrawBackground();
+
+            for (var i = 0 ; i < recs.length ; i++) drawPolygon(recs[i]);
+
+
+            document.body.onkeyup = function (e) {
+                if (e.keyCode == 32) {                    
+                    for (var i = 0 ; i < 72 ; i++) {
+                        document.getElementsByClassName("group" + i)[0].id = "unselected";
+                        groupSelect[i] = 0;
+                    };
+                    reInit();
+
+                } else if (e.keyCode == 101 || e.keyCode == 69) { 
+                    if (transparent) {
+                        for (var i = 0 ; i < recs.length ; i++) {
+                            var fillOpa = (recs[i].tempValue == -99999 || isNaN(recs[i].tempValue)) ? 0 : 1;
+                            recs[i].polygon.setOptions({ fillOpacity: fillOpa });
+                        };
+                        transparent = false;
+                    } else {
+                        for (var i = 0 ; i < recs.length ; i++) {
+                            recs[i].polygon.setOptions({ fillOpacity: 0 });
+                        };
+                        transparent = true;
+                    }
+
+                }
+            }
+
+        } //initialize()
+
+
+
+        function PutData() {
+
+            var cnt = 0;
+
+            for (var i = 0; i < sites.length; i++) {
+
+                if (sites[i].length != 0) {
+
+                    var coordiTemp = new Array();
+                    for (var j = 0 ; j < sites[i].length ; j++) { 
+                        coordiTemp.push(new Data(sites[i][j][1], sites[i][j][0]));
+                    }
+
+                    var valueTemp = new Array();
+                    for (var j = 0 ; j < values[i].length ; j++) {
+                        valueTemp.push(values[i][j]);
+                    }
+
+                    recs.push(new Rec(coordiTemp, valueTemp));
+                    cnt++;
+                }
+            }
+
+            
+        }
+
+        function DrawBackground() {
+            var backRect = new Array();
+            //서울
+            //var backCoord = [[37.4249, 126.76], [37.4249, 127.1855], [37.704, 127.1855], [37.704, 126.76], [37.4249, 126.76]];
+            //경기 전체
+            //var backCoord = [[36.83914, 127.8764], [36.83914, 126.0587], [38.35427, 126.0587], [38.35427, 127.8764], [36.83914, 127.8764]];
+            //전국
+            var backCoord = [[32.971369, 131.026902], [32.971369, 124.518475], [38.656463, 124.518475], [38.656463, 131.026902], [32.971369, 131.026902]];
+
+            for (var i = 0 ; i < backCoord.length ; i++) {
+                backRect.push(new google.maps.LatLng(backCoord[i][0],backCoord[i][1]));
+            }
+
+            var polygons = {
+                path: backRect,
+                strokeColor: "#ffffff",
+                strokeOpacity: 1,
+                strokeWeight: 0,
+                fillColor: "#ffffff",
+                fillOpacity: 0.8,
+                zIndex: 100
+            };
+
+            var background = new google.maps.Polygon(polygons);
+            background.setMap(map);
+        }
+
+
+
+
+
+
+        function drawPolygon(datum) {
+
+            var drawOrder;
+            
+            var polygonCoords = new Array();
+
+            for (var i = 0 ; i < datum.coordi.length ; i++) {
+                polygonCoords.push(new google.maps.LatLng(datum.coordi[i].lat, datum.coordi[i].lng));
+            }
+
+            var stColor = "#909090";
+           
+            
+            var  flColor = "white";
+            var  fillOpa = 0;
+            
+            var polygons = {
+                path: polygonCoords,
+                strokeColor: stColor,
+                strokeOpacity: 0.5,
+                strokeWeight: 0.3,
+                fillColor: flColor,
+                fillOpacity: fillOpa,
+                zIndex : 200,
+                map :map 
+            };
+
+            datum.polygon = new google.maps.Polygon(polygons);
+            
+            
+
+            //tooltips
+            var contentText = "<table border='0'><tr>200m x 200m 격자에서 2006-2016년 사이의 업종 증감 (x 는 아예 없음을 나타냄)</tr><tr>";
+            for (var i = 0 ; i < dataTxt.length ; i++) contentText += "<td>"+ dataTxt[i] + "</td>"
+
+            contentText += "</tr><tr>";
+            for (var i = 0 ; i < datum.value.length ; i++) contentText += "<td>"+datum.value[i] + "</td>";            
+            contentText += "</tr></table>";
+
+            var infoWindow = new google.maps.InfoWindow({ content: contentText, maxWidth: 1000 });
+            google.maps.event.addListener(datum.polygon, 'mouseover', function () {
+                infoWindow.setPosition(new google.maps.LatLng((datum.coordi[0].lat + datum.coordi[2].lat) / 2, (datum.coordi[0].lng + datum.coordi[2].lng) / 2));
+                infoWindow.open(map);                    
+            });
+            google.maps.event.addListener(datum.polygon, 'mouseout', function () {
+                infoWindow.open(null);
+            });
+
+           
+        }
+
+        function toggleData() {
+            if (toggle == 1) {
+                toggle = -1
+            } else {
+                toggle += 1;
+            }
+            
+            document.getElementById("toggle").innerText = toggleText[toggle + 1];
+            reInit();
+        }
+
+        
+        
+
+    </script>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        svg {
+
+            position: absolute;
+            top: 60px;
+            left: 100px;
+            z-index: 5;
+
+        }
+
+        #main_area {
+            height: 100%;
+            width: 100%;
+        }
+
+            #main_area > #map_canvas {
+                position : absolute;
+                right : 240px;
+                left : 0;
+                display : inline-block;
+                height: 100%;
+                
+            }
+
+            #main_area > #control_panel_plus {
+                display : inline-block;
+                width: 120px;
+                height: 100%;
+                float : right;
+                background-color: white;
+            }
+
+            #main_area > #control_panel_minus {
+                display : inline-block;
+                width: 120px;
+                height: 100%;
+                float : right;
+                background-color: white;
+            }
+   
+
+        @media print {
+            html, body {
+                height: auto;
+            }
+
+            #map-canvas, #map_canvas {
+                height: 650px;
+            }
+        }
+        #panel {
+        position: absolute;
+        top: 5px;
+        left: 50%;
+        margin-left: -180px;
+        z-index: 5;
+        background-color: #fff;
+        padding: 5px;
+        border: 1px solid #999;
+
+      }
+
+        svg text {
+            font-family: Arial;         
+            fill : #ffffff;
+            font-weight : bold;
+                        
+        }
+
+        svg path {
+            stroke: #fff;
+        }
+
+        ul.group {
+            padding : 0px 1px 0px 1px;
+            margin : 0 0 0 0;
+        }
+
+        ul.group >li {
+            font-family: '맑은 고딕', Arial;
+            font-weight : bold;
+            font-size : 5px;
+            text-align :center;
+            line-height : 13px;
+            display :block;
+            height : 8px;
+            width : 109px;
+            padding : 5px 5px 5px 5px;
+            margin : 2px 0px 2px 0px;
+        }
+        #control_panel_plus> ul.group > #unselected:hover {
+            background-color: #c993b0;
+        }
+        #control_panel_plus> ul.group >  #selected:hover {
+            background-color: #860048;            
+        }
+        
+        #control_panel_plus> ul.group >  #selected {
+            background-color: #d80074;
+            color : white;
+        }
+       
+        #control_panel_minus> ul.group > #unselected:hover {
+            background-color: #92bbd1;
+        }
+        #control_panel_minus> ul.group >  #selected:hover {
+            background-color: #004e79;            
+        }
+        
+        #control_panel_minus> ul.group >  #selected {
+            background-color: #0086cf;
+            color : white;
+        }
+
+        ul.group >  #unselected {
+            background-color: #f2f2f2;
+            color : black;
+        }
+
+        table {
+            font-family: '맑은 고딕', Arial;
+            font-weight : bold;
+            font-size : 3px;
+            padding : 0px 0px 0px 0px;
+            margin : 0px 0px 0px 0px;
+            border : 0px 0px 0px 0px;
+        }
+
+        
+    </style>   
+
+
+</head>
+
+<body onload="initialize()">
+    <div id="panel">
+        
+        <button id="toggle" onclick="toggleData()">선택된 업종의 교집합</button>
+
+    </div>
+   <div id="main_area" >
+        <section id="map_canvas" ></section>
+        
+       <aside id="control_panel_minus">
+           <ul id="minusGroup" class="group">
+               
+           </ul>
+       </aside>
+       <aside id="control_panel_plus">
+           <ul id="plusGroup" class="group">
+                
+           </ul>
+       </aside>
+   </div>
+   
+</body>
+</html>
